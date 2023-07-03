@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document</title>
+</heads>
+<body>
+  <script>
+var video = document.createElement("video");
+video.src = "/asset/t.mp4";
+document.onmousedown = ()=> video.play();
+var canvas = document.createElement("canvas");
+document.body.append(canvas);
+var context = canvas.getContext("2d");
+function render() {
+  context.drawImage(video, 0, 0);
+  requestAnimationFrame(render);
+}
+render();
+  </script>
+</body>
+</html>
