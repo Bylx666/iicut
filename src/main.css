@@ -1,17 +1,72 @@
+@font-face {
+  font-family: icon;
+  src: url(/asset/font/iconfont.woff2);
+}
+ico {
+  font-family: icon;
+}
+
+
 body {
   margin: 0;
   height: 100vh;
+  overflow: hidden;
   background-color: #fec;
   background-image: radial-gradient(30vw 30vw at 20% 90%, #ecb,#0000),
                     radial-gradient(40vw 40vw at 95% 5%, #fdc,#0000),
                     linear-gradient(-10deg, #edc, #fed);
-
+  color: #345;
+  user-select: none;
+  -webkit-user-select: none;
+  font-size: 1.6vh;
 }
+
+body > header {
+  background-color: #fff5;
+  color: #567;
+  height: 3vh;
+  display: flex;
+  box-shadow: 0 0 0.5vh #888;
+  padding: 0 2vh;
+}
+body > header > div {
+  line-height: 3vh;
+  padding: 0 1vh;
+  transition: background-color 0.2s;
+}
+body > header > div:hover, body > header > div:active {
+  background-color: #3453;
+}
+
 body > canvas {
   position: absolute;
   left: 50%;top: 50%;
   transform: translate(-50%,-50%);
-  box-shadow: 0 1px 3px #888;
+  box-shadow: 0 0 0.5vh #888;
   border-radius: 5px;
   background-color: #fff;
+}
+
+body > contextmenu {
+  position: fixed;
+  left: 0;top: 0;width: 100vw;height: 100vh;
+}
+body > contextmenu > div {
+  position: absolute;
+  background-color: #fff8;
+  backdrop-filter: blur(2px);
+  box-shadow: 0 0 0.5vh #888;
+  padding: 0.8vh;
+  border-radius: 0.5vh;
+  color: #567c;
+}
+body > contextmenu > div > div {
+  width: 12vh;
+  line-height: 2vh;
+  padding: 0.5vh 2vh;
+  border-radius: 0.2vh;
+}
+body > contextmenu > div > div:hover, body > contextmenu > div > div:active {
+  background-color: #3452;
+  color: #345;
 }

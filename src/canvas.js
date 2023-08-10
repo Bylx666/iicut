@@ -1,58 +1,85 @@
-// Canvasjs by Subkey
-// 为了方便控制各元素且利用canvas的可渲染性，简单写个canvas类
-// 此js可作为库脱离此项目独立使用
+// Canvasjs
+// by Subkey
+// for video controllability mixing
+// Availablely separated
 class Canvas {
   constructor() {
-    // dom参数
+    // dom params
     this.canvas = document.createElement("canvas");
     this.context = this.canvas.getContext("2d");
-    // 渲染参数
+    // rendering params
     this._timerId = 0;
-    this._playTime = 0; // 开始播放的timestamp 用来计算current
-    this.fps = 24; // 渲染使用的帧数
-    this.current = 0; // 当前秒数
-    this.duration = 1; // 总秒数
-    this.playing = false; // 播放状态
-    this.loop = true;
-    this.layers = []; // 所有CanvasOM
-    // 事件
+    this._playTime = 0; // timestamp when start, for calc of frame timing
+    this.fps = 0; // exporting fps
+    this.current = 0; // current seconds
+    this.duration = 1; // duration in seconds
+    this.playing = false; // status playing
+    this.layers = []; // CanvasOM list
+    // Ev
     this.onend = null;
+    // init recording into webm
+    this.recorder = new MediaRecorder(this.canvas.captureStream(), {mimeType: 'video/webm'});
   }
 
-  // 渲染控制
+  get videos() {
+    return this.layers.filter((l)=> l.type==="video");
+  }
+
+  // rendering controlling
   render() {
+    // reset after end
+    if(this.current>=this.duration) {
+      this.current = 0;
+      this.pause();
+      for(const {video} of this.videos) if(!video.paused) video.pause();
+      if(typeof this.onend==="function") this.onend.call(this);
+      return;
+    }
     this.context.clearRect(0,0,this.canvas.width,this.canvas.height);
     this.current = (Date.now() - this._playTime)/1000;
-    if(this.current>this.duration) { // 播完重置
-      this.current = 0;
-      this._playTime = Date.now();
-      if(!this.loop) this.pause();
-      for(const lay of this.layers) if(lay.type==="video") lay.video.pause();
-      if(typeof this.onend==="function") this.onend.call(this);
-    }
+    // iterate through CanvasOMs to render
     for(const lay of this.layers)
-      if(this.current>lay.start) {
-        if(this.current<lay.start + lay.duration) { // 渲染在播放时间内的片段
+      if(this.current>=lay.start) {
+        // just render frames in time
+        if(this.current<=lay.start + lay.duration) {
           lay.applySuper();
-          lay.render(this.context, lay.style); // 传参只是方便变量使用
-        }else if(lay.type==="video"&&!lay.video.paused) lay.video.pause(); // 过了时长的视频直接停下
+          // play the not played videos
+          if(lay.type==="video"&&lay.video.paused) lay.video.play();
+          lay.render(this.context);
+        // halt videos after time
+        }else if(lay.type==="video"&&!lay.video.paused) lay.video.pause();
       }
     this._timerId = requestAnimationFrame(this.render.bind(this));
   }
-  play() {
+  play(fCallback, fRecord) {
     if(this.playing) return;
-    this.playing = true;
-    this._playTime = Date.now() - this.current*1000;
-    this.render();
+    // load the first frame in advance
+    var seeked = this.videos.length;
+    var onseek = ()=> {
+      if(--seeked!==0) return;
+      // actual playing function
+      this._playTime = Date.now() - this.current*1000;
+      this.render();
+      typeof fCallback==="function"&&fCallback.call(this);
+      this.playing = true;
+      if(fRecord) {
+        this.recorder.start();
+        this.recorder.ondataavailable = (e)=> fRecord.call(this, e.data);
+      }
+    };
+    for(const {video, start, offset} of this.videos) {
+      video.currentTime = this.current - start + offset;
+      video.onseeked = onseek;
+    }
   }
   pause() {
     this.playing = false;
-    this._playTime = Date.now();
     cancelAnimationFrame(this._timerId);
-    for(const lay of this.layers) if(lay.type==="video") lay.video.pause();
+    for(const {video} of this.videos) if(!video.paused) video.pause();
+    if(this.recorder.state==="recording") this.recorder.stop();
   }
 
-  // 创建渲染内容
+  // rendering creation
   append(lay) {
     lay.canvas = this;
     this.layers.push(lay);
@@ -75,9 +102,9 @@ class CanvasOM {
   constructor() {
     this.canvas = null; // 绑定了的Canvas对象
     this.start = 0; // 秒起点
-    this.duration = 1; // 秒数
+    this.duration = 0; // 秒数
     this.keyframe = {}; // 关键帧列表
-    this.style = {
+    this._style = {
       x: 0,
       y: 0,
       opacity: 1,
@@ -88,6 +115,13 @@ class CanvasOM {
       shadowC: "#0000"
     };
   }
+  set style(v) {
+    this._style = Object.assign(this._style, v);
+  }
+  get style() {
+    return this._style;
+  }
+
   applySuper() { // 给画布设置父类属性
     // 根据关键帧设置当前帧的数值
     for(const prop of Object.keys(this.keyframe)) {
@@ -112,13 +146,13 @@ class CanvasOM {
     }
     // 把现在的数值应用到context2d
     var ctx = this.canvas.context;
-    var style = this.style;
-    ctx.globalAlpha = style.opacity;
-    ctx.globalCompositeOperation = style.mixing;
-    ctx.shadowOffsetX = style.shadowX;
-    ctx.shadowOffsetY = style.shadowY;
-    ctx.shadowBlur = style.shadowB;
-    ctx.shadowColor = style.shadowC;
+    const {opacity, mixing, shadowX, shadowY, shadowB, shadowC} = this.style;
+    ctx.globalAlpha = opacity;
+    ctx.globalCompositeOperation = mixing;
+    ctx.shadowOffsetX = shadowX;
+    ctx.shadowOffsetY = shadowY;
+    ctx.shadowBlur = shadowB;
+    ctx.shadowColor = shadowC;
   }
 }
 
@@ -129,34 +163,25 @@ class CanvasSrcOM extends CanvasOM {
     this.blob = null;
     this.src = null;
   }
-  static async save(sId, blob) {
-    var srcs = await caches.open("canvasrcs");
-    return await srcs.put(sId, new Response(blob));
-  }
   async load(sId) {
     this.id = sId;
-    var memo = CanvasSrcOM.memory;
-    if(!memo[sId]) {
-      var srcs = await caches.open("canvasrcs");
-      var cached = await srcs.match(sId);
-      if(cached) return this.src = URL.createObjectURL(this.blob = await cached.blob());
+    return iiResources.get(sId).then((b)=> {
+      if(b) return this.src = URL.createObjectURL(this.blob = new Blob([b]));
       return null;
-    }
-    else return this.src = URL.createObjectURL(this.blob = memo[sId]);
+    });
   }
 }
-CanvasSrcOM.memory = {};
 
 // img类，继承CanvasOM
 class CanvasImgOM extends CanvasSrcOM {
   constructor(sId) {super();
     this.type = "img";
     this.img = new Image();
-    this.style = Object.assign(this.style, {
+    this.style = {
       smooth: false,
       width: 0,
       height: 0
-    });
+    };
     // 加载图片
     this.load(sId).then((s)=> this.img.src = s?s:"/asset/lost.png");
     this.img.onload = ()=> {
@@ -164,9 +189,10 @@ class CanvasImgOM extends CanvasSrcOM {
       if(!this.style.height) this.style.height = this.img.naturalHeight;
     };
   }
-  render(ctx, style) {
-    ctx.imageSmoothingEnabled = style.smooth;
-    ctx.drawImage(this.img, style.x, style.y, style.width, style.height);
+  render(ctx) {
+    const {x, y, width, height, smooth} = this.style;
+    ctx.imageSmoothingEnabled = smooth;
+    ctx.drawImage(this.img, x, y, width, height);
   }
 }
 
@@ -176,25 +202,27 @@ class CanvasVideoOM extends CanvasSrcOM {
     this.type = "video";
     this.video = document.createElement("video");
     this.offset = 0; // 视频开始位置
-    this.style = Object.assign(this.style, {
+    this.style = {
       width: 0,
       height: 0
-    });
-    this.load(sId).then((s)=> this.video.src = s?s:"/asset/lost.mp4");
-    this.video.onloadedmetadata = ()=> {
-      if(!this.style.width) this.style.width = this.video.videoWidth;
-      if(!this.style.height) this.style.height = this.video.videoHeight;
-      if(this.duration===1) this.duration = this.video.duration - this.offset;
     };
+    this.load(sId).then((s)=> {
+      if(s) this.video.onloadedmetadata = ()=> {
+        if(!this.style.width) this.style.width = this.video.videoWidth;
+        if(!this.style.height) this.style.height = this.video.videoHeight;
+        if(!this.duration) this.duration = this.video.duration - this.offset;
+      };
+      this.video.muted = true;
+      this.video.src = s?s:"/asset/lost.mp4";
+    });
   }
-  render(ctx, style) {
-    if(this.video.paused) {
-      this.video.currentTime = this.canvas.current - this.start + this.offset;
-      this.video.play();
-    }
-    ctx.drawImage(this.video, style.x, style.y, style.width, style.height);
+  render(ctx) {
+    const {x, y, width, height} = this.style;
+    ctx.drawImage(this.src?this.video:CanvasVideoOM.lost, x, y, width, height);
   }
 }
+CanvasVideoOM.lost = new Image();
+CanvasVideoOM.lost.src = "/asset/lost.png";
 
 // 优化内存用的video
 class CanvasVideoFragmentOM {
@@ -205,19 +233,20 @@ class CanvasVideoFragmentOM {
 class CanvasTextOM extends CanvasOM {
   constructor(sText) {super();
     this.type = "text";
-    this.style = Object.assign(this.style, {
+    this.style = {
       size: 10,
       family: "sans-serif",
       align: "left",
       color: "#345"
-    });
+    };
     this.text = sText;
   }
-  render(ctx, style) {
-    ctx.font = `${style.size}px ${style.family}`;
-    ctx.textAlign = style.align;
-    ctx.fillStyle = style.color;
-    ctx.fillText(this.text, style.x, style.y);
+  render(ctx) {
+    const {size, family, align, color, x, y} = this.style;
+    ctx.font = `${size}px ${family}`;
+    ctx.textAlign = align;
+    ctx.fillStyle = color;
+    ctx.fillText(this.text, x, y);
   }
 }
 
